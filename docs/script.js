@@ -31,12 +31,9 @@ function testSupport(supportedDevices) {
             `is not well supported at this time, continue at your own risk.`);
     }
 }
-/**
- * @fileoverview Demonstrates a minimal use case for MediaPipe face tracking.
- */
 const controls = window;
 const drawingUtils = window;
-const mpFaceDetection = window;
+const mpFaceMesh = window;
 // Our input frames will come from here.
 const videoElement = document.getElementsByClassName('input_video')[0];
 const canvasElement = document.getElementsByClassName('output_canvas')[0];
@@ -59,34 +56,39 @@ function onResults(results) {
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-    if (results.detections.length > 0) {
-        drawingUtils.drawRectangle(canvasCtx, results.detections[0].boundingBox, { color: 'blue', lineWidth: 4, fillColor: '#00000000' });
-        drawingUtils.drawLandmarks(canvasCtx, results.detections[0].landmarks, {
-            color: 'red',
-            radius: 5,
-        });
+    if (results.multiFaceLandmarks) {
+        for (const landmarks of results.multiFaceLandmarks) {
+            drawingUtils.drawConnectors(canvasCtx, landmarks, mpFaceMesh.FACEMESH_TESSELATION, { color: '#C0C0C070', lineWidth: 1 });
+            drawingUtils.drawConnectors(canvasCtx, landmarks, mpFaceMesh.FACEMESH_RIGHT_EYE, { color: '#FF3030' });
+            drawingUtils.drawConnectors(canvasCtx, landmarks, mpFaceMesh.FACEMESH_RIGHT_EYEBROW, { color: '#FF3030' });
+            drawingUtils.drawConnectors(canvasCtx, landmarks, mpFaceMesh.FACEMESH_LEFT_EYE, { color: '#30FF30' });
+            drawingUtils.drawConnectors(canvasCtx, landmarks, mpFaceMesh.FACEMESH_LEFT_EYEBROW, { color: '#30FF30' });
+            drawingUtils.drawConnectors(canvasCtx, landmarks, mpFaceMesh.FACEMESH_FACE_OVAL, { color: '#E0E0E0' });
+            drawingUtils.drawConnectors(canvasCtx, landmarks, mpFaceMesh.FACEMESH_LIPS, { color: '#E0E0E0' });
+        }
     }
     canvasCtx.restore();
 }
-const faceDetection = new mpFaceDetection.FaceDetection({ locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4/${file}`;
+const faceMesh = new FaceMesh({ locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`;
     } });
-faceDetection.onResults(onResults);
+faceMesh.onResults(onResults);
 // Present a control panel through which the user can manipulate the solution
 // options.
 new controls
     .ControlPanel(controlsElement, {
     selfieMode: true,
-    model: 'short',
+    maxNumFaces: 1,
     minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
 })
     .add([
-    new controls.StaticText({ title: 'MediaPipe Face Detection' }),
+    new controls.StaticText({ title: 'MediaPipe Face Mesh' }),
     fpsControl,
     new controls.Toggle({ title: 'Selfie Mode', field: 'selfieMode' }),
     new controls.SourcePicker({
         onSourceChanged: () => {
-            faceDetection.reset();
+            faceMesh.reset();
         },
         onFrame: async (input, size) => {
             const aspect = size.height / size.width;
@@ -101,17 +103,18 @@ new controls
             }
             canvasElement.width = width;
             canvasElement.height = height;
-            await faceDetection.send({ image: input });
+            await faceMesh.send({ image: input });
         },
         examples: {
-            images: [],
             videos: [],
-        },
+            images: [],
+        }
     }),
     new controls.Slider({
-        title: 'Model Selection',
-        field: 'model',
-        discrete: { 'short': 'Short-Range', 'full': 'Full-Range' },
+        title: 'Max Number of Faces',
+        field: 'maxNumFaces',
+        range: [1, 4],
+        step: 1
     }),
     new controls.Slider({
         title: 'Min Detection Confidence',
@@ -119,9 +122,15 @@ new controls
         range: [0, 1],
         step: 0.01
     }),
+    new controls.Slider({
+        title: 'Min Tracking Confidence',
+        field: 'minTrackingConfidence',
+        range: [0, 1],
+        step: 0.01
+    }),
 ])
     .on(x => {
     const options = x;
     videoElement.classList.toggle('selfie', options.selfieMode);
-    faceDetection.setOptions(options);
+    faceMesh.setOptions(options);
 });
